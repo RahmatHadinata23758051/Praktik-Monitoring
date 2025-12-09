@@ -16,23 +16,75 @@ class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
 
   @override
+  void dispose() {
+    _userC.dispose();
+    _passC.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+    final theme = Theme.of(context);
+
+    Widget brandingBox = Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Monitoring App', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Text('Realtime IoT monitoring', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 140,
+            child: Center(
+              child: Icon(
+                Icons.cloud,
+                size: 110,
+                color: theme.colorScheme.primary.withOpacity(0.12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Widget formCard = Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Form(
           key: _formKey,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text('Welcome back', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('Sign in to continue', style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 18),
               TextFormField(
                 controller: _userC,
-                decoration: const InputDecoration(labelText: 'Username'),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.person),
+                  hintText: 'Username',
+                ),
                 validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _passC,
-                decoration: const InputDecoration(labelText: 'Password'),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.lock),
+                  hintText: 'Password',
+                ),
                 obscureText: true,
                 validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
@@ -56,13 +108,65 @@ class _LoginPageState extends State<LoginPage> {
                           );
                         }
                       },
-                child: const Text('Login'),
+                child: _loading
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Sign In'),
               ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/register'),
-                child: const Text('Register'),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pushNamed(context, '/register'),
+                    child: const Text('Create account'),
+                  ),
+                  TextButton(
+                    onPressed: () {},
+                    child: const Text('Forgot password?'),
+                  ),
+                ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 800;
+                if (isNarrow) {
+                  return Column(
+                    children: [
+                      brandingBox,
+                      const SizedBox(height: 18),
+                      formCard,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: brandingBox),
+                    const SizedBox(width: 24),
+                    Expanded(child: formCard),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),

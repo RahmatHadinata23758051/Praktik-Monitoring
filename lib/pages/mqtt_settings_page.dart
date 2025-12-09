@@ -26,42 +26,71 @@ class _MQTTSettingsPageState extends State<MQTTSettingsPage> {
     final mqtt = Provider.of<MQTTService>(context);
     return Scaffold(
       appBar: AppBar(title: const Text('MQTT Settings')),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: [
-            TextFormField(
-              controller: _hostC,
-              decoration: const InputDecoration(labelText: 'Host'),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'MQTT Broker',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Configure broker host/port and reconnect',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _hostC,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.cloud),
+                      hintText: 'Host (e.g. wss://broker.emqx.io:8084/mqtt)',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _portC,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.dns),
+                      hintText: 'Port (tcp port, e.g. 1883)',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final host = _hostC.text.trim();
+                            final port =
+                                int.tryParse(_portC.text.trim()) ?? 1883;
+                            await mqtt.saveSettings(host, port);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Saved')),
+                            );
+                          },
+                          child: const Text('Save & Connect'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        mqtt.connected ? Icons.check_circle : Icons.cancel,
+                        color: mqtt.connected ? Colors.green : Colors.red,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            TextFormField(
-              controller: _portC,
-              decoration: const InputDecoration(labelText: 'Port'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () async {
-                final host = _hostC.text.trim();
-                final port = int.tryParse(_portC.text.trim()) ?? 1883;
-                await mqtt.saveSettings(host, port);
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Saved')));
-              },
-              child: const Text('Save'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text('Connected: '),
-                Icon(
-                  mqtt.connected ? Icons.check_circle : Icons.cancel,
-                  color: mqtt.connected ? Colors.green : Colors.red,
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
