@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart' show MqttServerClient;
-import 'package:mqtt_client/mqtt_browser_client.dart' show MqttBrowserClient;
+import 'mqtt_client_factory.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MQTTService extends ChangeNotifier {
@@ -90,7 +89,7 @@ class MQTTService extends ChangeNotifier {
       for (final ep in candidates) {
         try {
           _addLog('Trying endpoint: $ep');
-          final temp = MqttBrowserClient(
+          final temp = createMqttClient(
             ep,
             'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
           );
@@ -148,11 +147,14 @@ class MQTTService extends ChangeNotifier {
         );
       }
     } else {
-      _client = MqttServerClient(
+      // create IO client via factory (returns MqttServerClient)
+      _client = createMqttClient(
         host,
         'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
       );
-      _client.port = port;
+      try {
+        _client.port = port;
+      } catch (_) {}
     }
 
     _addLog('Attempting MQTT connect to $connEndpoint');
@@ -282,7 +284,8 @@ class MQTTService extends ChangeNotifier {
       latest[topic] = data;
       notifyListeners();
     } catch (e) {
-      // ignore parse errors
+      _addLog('Payload parse error for $topic: $e');
+      _addLog('Raw payload: $payload');
     }
   }
 
