@@ -12,7 +12,9 @@ class RegisterPage extends StatefulWidget {
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
   final _userC = TextEditingController();
+  final _emailC = TextEditingController();
   final _passC = TextEditingController();
+  final _confirmC = TextEditingController();
   bool _loading = false;
 
   @override
@@ -31,10 +33,33 @@ class _RegisterPageState extends State<RegisterPage> {
                 validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
               TextFormField(
+                controller: _emailC,
+                decoration: const InputDecoration(labelText: 'Email'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Required';
+                  if (!RegExp(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").hasMatch(v))
+                    return 'Invalid email';
+                  return null;
+                },
+              ),
+              TextFormField(
                 controller: _passC,
                 decoration: const InputDecoration(labelText: 'Password'),
                 obscureText: true,
                 validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+              ),
+              TextFormField(
+                controller: _confirmC,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm Password',
+                ),
+                obscureText: true,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Required';
+                  if (v != _passC.text) return 'Passwords do not match';
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               ElevatedButton(
@@ -43,10 +68,15 @@ class _RegisterPageState extends State<RegisterPage> {
                     : () async {
                         if (!_formKey.currentState!.validate()) return;
                         setState(() => _loading = true);
-                        final ok = await Provider.of<AuthService>(
-                          context,
-                          listen: false,
-                        ).register(_userC.text.trim(), _passC.text);
+                        final ok =
+                            await Provider.of<AuthService>(
+                              context,
+                              listen: false,
+                            ).register(
+                              _userC.text.trim(),
+                              _passC.text,
+                              _emailC.text.trim(),
+                            );
                         setState(() => _loading = false);
                         if (ok) {
                           ScaffoldMessenger.of(context).showSnackBar(

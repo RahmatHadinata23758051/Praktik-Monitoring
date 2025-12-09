@@ -7,12 +7,13 @@ class AuthService extends ChangeNotifier {
 
   String? get currentUser => _currentUser;
 
-  Future<bool> register(String username, String password) async {
+  // users stored as map username -> {"password": "...", "email": "..."}
+  Future<bool> register(String username, String password, String email) async {
     final prefs = await SharedPreferences.getInstance();
     final usersJson = prefs.getString('users') ?? '{}';
     final Map<String, dynamic> users = json.decode(usersJson);
     if (users.containsKey(username)) return false;
-    users[username] = password;
+    users[username] = {'password': password, 'email': email};
     await prefs.setString('users', json.encode(users));
     return true;
   }
@@ -21,7 +22,8 @@ class AuthService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final usersJson = prefs.getString('users') ?? '{}';
     final Map<String, dynamic> users = json.decode(usersJson);
-    if (users[username] == password) {
+    final entry = users[username];
+    if (entry != null && entry is Map && entry['password'] == password) {
       _currentUser = username;
       await prefs.setString('current_user', username);
       notifyListeners();
