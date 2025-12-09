@@ -109,7 +109,6 @@ Lokasi database (SQLite) dan data local
 Contoh mengekspor DB dari emulator (PowerShell):
 
 ```powershell
-# ganti com.example.monitoring dengan package name Anda
 adb shell run-as com.example.monitoring cat /data/data/com.example.monitoring/databases/monitoring.db > C:\temp\monitoring.db
 ```
 
@@ -134,22 +133,3 @@ Struktur penting proyek
 - `lib/services/auth_service.dart` — register/login (SharedPreferences).
 - `lib/pages/` — tampilan: `login_page.dart`, `register_page.dart`, `dashboard_page.dart`, `devices_page.dart`, `mqtt_settings_page.dart`.
 - `lib/widgets/device_card.dart` — kartu UI device (styling temperature/battery).
-
-Cara berkontribusi
-------------------
-- Fork dan buat branch fitur/bugfix: `git checkout -b feat/your-feature`
-- Pastikan lint dan format: `flutter format .` dan `flutter analyze`
-- Buat PR ke branch `main` dengan deskripsi perubahan dan langkah verifikasi.
-
-Lisensi
--------
-Proyek ini belum memiliki lisensi; tambahkan file `LICENSE` jika Anda hendak mengatur lisensi.
-
-Butuh bantuan lebih lanjut?
-------------------------
-Jika Anda ingin saya:
-- Menyiapkan signing keystore & konfigurasi release gradle.
-- Menambahkan enkripsi lokal untuk credential.
-- Men-deploy build web ke host statis (Firebase Hosting / Netlify).
-
-Silakan beri tahu langkah mana yang ingin Anda lakukan selanjutnya.
