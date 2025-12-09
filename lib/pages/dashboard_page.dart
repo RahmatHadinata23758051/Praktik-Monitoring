@@ -30,6 +30,45 @@ class _DashboardPageState extends State<DashboardPage> {
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
+          // MQTT connection status indicator
+          Consumer<MQTTService>(
+            builder: (context, m, _) {
+              return IconButton(
+                tooltip: m.connected ? 'MQTT connected' : 'MQTT disconnected',
+                onPressed: () {
+                  // show recent logs
+                  showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('MQTT Logs'),
+                      content: SizedBox(
+                        width: double.maxFinite,
+                        child: ListView(
+                          children: m.recentLogs.map((e) => Text(e)).toList(),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                icon: Icon(
+                  m.connected ? Icons.wifi : Icons.wifi_off,
+                  color: m.connected ? Colors.greenAccent : Colors.grey,
+                ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Reconnect MQTT',
+            onPressed: () =>
+                Provider.of<MQTTService>(context, listen: false).connect(),
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(
             onPressed: () => Navigator.pushNamed(context, '/devices'),
             icon: const Icon(Icons.devices),

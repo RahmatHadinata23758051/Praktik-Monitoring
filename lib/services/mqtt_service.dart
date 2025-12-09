@@ -13,6 +13,19 @@ class MQTTService extends ChangeNotifier {
   String host = 'broker.emqx.io';
   int port = 1883;
   bool connected = false;
+  // per-topic subscribed state
+  final Map<String, bool> subscribed = {};
+  // small recent event logs for debugging (most recent first)
+  final List<String> recentLogs = [];
+  void _addLog(String s) {
+    final ts = DateTime.now().toIso8601String();
+    recentLogs.insert(0, '[$ts] $s');
+    if (recentLogs.length > 200) recentLogs.removeRange(200, recentLogs.length);
+    notifyListeners();
+  }
+
+  int _reconnectAttempts = 0;
+  final int _maxReconnectAttempts = 10;
 
   // latest data by topic
   final Map<String, Map<String, dynamic>> latest = {};
@@ -47,15 +60,93 @@ class MQTTService extends ChangeNotifier {
 
   Future<void> connect() async {
     await _disconnect();
+
+    // prepare a connection endpoint description for logs
+    final connEndpoint = kIsWeb
+        ? ((host.startsWith('ws://') || host.startsWith('wss://'))
+              ? host
+              : 'wss://$host:8084/mqtt')
+        : '$host:$port';
+
+    bool alreadyConnected = false;
+
     if (kIsWeb) {
-      // On web use WebSocket endpoint. If host looks like ws:// or wss://, use it; otherwise default to EMQX ws port
-      final endpoint = (host.startsWith('ws://') || host.startsWith('wss://'))
-          ? host
-          : 'ws://$host:8083/mqtt';
-      _client = MqttBrowserClient(
-        endpoint,
-        'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
-      );
+      // try a few websocket endpoint variants (wss/ws, with and without /mqtt)
+      final List<String> candidates = [];
+      if (host.startsWith('ws://') || host.startsWith('wss://'))
+        candidates.add(host);
+      candidates.add('wss://$host:8084/mqtt');
+      candidates.add('ws://$host:8083/mqtt');
+      candidates.add('wss://$host:8084');
+      candidates.add('ws://$host:8083');
+      // Add known-public test brokers to help diagnose network/browser issues
+      candidates.add('wss://test.mosquitto.org:8081');
+      candidates.add('ws://test.mosquitto.org:8080');
+
+      _addLog('Web mode: trying websocket endpoints: ${candidates.join(', ')}');
+
+      dynamic connectedClient;
+      String? chosenEndpoint;
+      for (final ep in candidates) {
+        try {
+          _addLog('Trying endpoint: $ep');
+          final temp = MqttBrowserClient(
+            ep,
+            'flutter_client_${DateTime.now().millisecondsSinceEpoch}',
+          );
+          temp.logging(on: true);
+          // ensure port is set on the browser client so the library does not override it
+          try {
+            final uri = Uri.parse(ep);
+            if (uri.hasPort) {
+              try {
+                temp.port = uri.port;
+                _addLog('Set temp.port = ${uri.port} for endpoint $ep');
+              } catch (_) {}
+            }
+          } catch (_) {}
+          temp.keepAlivePeriod = 20;
+          temp.onDisconnected = _onDisconnected;
+          try {
+            temp.onConnected = () {
+              _addLog('MQTT connected (temp) for $ep');
+            };
+          } catch (_) {}
+          try {
+            temp.onSubscribed = (String topic) {
+              _addLog('Subscribed (temp): $topic');
+            };
+          } catch (_) {}
+
+          await temp.connect();
+          final st = temp.connectionStatus;
+          _addLog('Attempt result for $ep -> ${st?.toString() ?? 'null'}');
+          if (st != null && st.state == MqttConnectionState.connected) {
+            connectedClient = temp;
+            chosenEndpoint = ep;
+            break;
+          } else {
+            try {
+              temp.disconnect();
+            } catch (_) {}
+          }
+        } catch (e, st) {
+          _addLog('Endpoint $ep failed: $e');
+          _addLog('Stack: $st');
+        }
+      }
+
+      if (connectedClient != null) {
+        _client = connectedClient;
+        alreadyConnected = true;
+        _addLog('Using websocket endpoint: $chosenEndpoint');
+      } else {
+        _client = null;
+        _addLog('No websocket endpoint succeeded');
+        _addLog(
+          'If all endpoints fail: periksa Developer Console di browser untuk error WebSocket/TLS/CORS, atau coba ganti host menjadi "wss://broker.emqx.io:8084/mqtt" di Settings.',
+        );
+      }
     } else {
       _client = MqttServerClient(
         host,
@@ -64,36 +155,93 @@ class MQTTService extends ChangeNotifier {
       _client.port = port;
     }
 
+    _addLog('Attempting MQTT connect to $connEndpoint');
     try {
-      _client.logging(on: false);
+      if (_client == null) {
+        _addLog('No MQTT client available to connect');
+        _scheduleReconnect();
+        return;
+      }
+
+      _client.logging(on: true);
       _client.keepAlivePeriod = 20;
       _client.onDisconnected = _onDisconnected;
+      try {
+        _client.onConnected = () {
+          _addLog('MQTT connected');
+          connected = true;
+          notifyListeners();
+        };
+      } catch (_) {}
+      try {
+        _client.onSubscribed = (String topic) {
+          subscribed[topic] = true;
+          _addLog('Subscribed: $topic');
+        };
+      } catch (_) {}
 
       final connMess = MqttConnectMessage().startClean();
       _client.connectionMessage = connMess;
-      await _client.connect();
-      if (_client.connectionStatus?.state == MqttConnectionState.connected) {
+
+      if (!alreadyConnected) {
+        await _client.connect();
+      } else {
+        _addLog('Client already connected by candidate probe');
+      }
+
+      final status = _client.connectionStatus;
+      _addLog('ConnectionStatus: ${status?.toString() ?? 'null'}');
+      if (status != null && status.state == MqttConnectionState.connected) {
+        _reconnectAttempts = 0;
         connected = true;
+        _addLog('Connection established. Subscribing to topics...');
         _subscribeAll();
         _startWatchdog();
         notifyListeners();
       } else {
         connected = false;
+        final rc = status?.returnCode ?? 'unknown';
+        _addLog('Connect failed, returnCode=$rc');
         try {
           _client.disconnect();
         } catch (_) {}
+        _scheduleReconnect();
       }
-    } catch (e) {
+    } catch (e, st) {
       connected = false;
+      _addLog('Connect exception: $e');
+      _addLog('Stack: $st');
       try {
         _client?.disconnect();
       } catch (_) {}
+      _scheduleReconnect();
     }
+  }
+
+  void _scheduleReconnect() {
+    _reconnectAttempts++;
+    if (_reconnectAttempts > _maxReconnectAttempts) {
+      _addLog(
+        'Max reconnect attempts reached ($_reconnectAttempts). Will stop retrying.',
+      );
+      return;
+    }
+    final delay = Duration(seconds: 2 * _reconnectAttempts);
+    _addLog(
+      'Scheduling reconnect attempt #$_reconnectAttempts in ${delay.inSeconds}s',
+    );
+    Timer(delay, () async {
+      if (connected) return;
+      await connect();
+    });
   }
 
   void _onDisconnected() {
     connected = false;
+    _addLog('MQTT disconnected. status=${_client?.connectionStatus}');
     notifyListeners();
+    // try reconnect
+    _scheduleReconnect();
   }
 
   Future<void> _disconnect() async {
@@ -108,7 +256,12 @@ class MQTTService extends ChangeNotifier {
   void _subscribeAll() {
     if (_client == null) return;
     for (final t in topics) {
-      _client!.subscribe(t, MqttQos.atMostOnce);
+      subscribed[t] = false;
+      try {
+        _client!.subscribe(t, MqttQos.atMostOnce);
+      } catch (e) {
+        _addLog('Subscribe error for $t: $e');
+      }
     }
 
     _client!.updates?.listen((List<MqttReceivedMessage<MqttMessage>> c) {
@@ -116,6 +269,7 @@ class MQTTService extends ChangeNotifier {
       final payload = MqttPublishPayload.bytesToStringAsString(
         recMess.payload.message,
       );
+      _addLog('Received on ${c[0].topic}: $payload');
       _handlePayload(c[0].topic, payload);
     });
   }
